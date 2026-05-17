@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Project artifacts (large, regeneratable)
+chroma_db/
+*.pkl
+data/papers/*.pdf
+data/papers/*.PDF
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+papermind.db
+
+# HF / model caches (we let them live in ~/.cache, not in repo)
+.cache/
