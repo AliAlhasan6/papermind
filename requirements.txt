@@ -1,5 +1,5 @@
 # Core agent + LLM (local via Ollama)
-langgraph>=1.0
+langgraph>=1.0,<2.0  # create_react_agent removed in v2.0 — see agent.py
 langchain-ollama>=0.2.0
 langchain-core>=0.3.0
 langchain-text-splitters>=0.3.0

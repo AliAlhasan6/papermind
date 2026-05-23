@@ -11,6 +11,8 @@ from functools import lru_cache
 
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
+# NOTE: create_react_agent is stable in langgraph 1.x. It moves to
+# langchain.agents.create_agent in v2.0 — requirements.txt pins <2.0.
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 
