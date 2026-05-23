@@ -28,3 +28,8 @@ papermind.db
 
 # HF / model caches (we let them live in ~/.cache, not in repo)
 .cache/
+
+# Day 3 runtime artifacts (machine-specific state, regeneratable)
+data/kg_progress.jsonl
+data/kg_failures.jsonl
+data/kg_run.log
