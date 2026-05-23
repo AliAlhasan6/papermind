@@ -1,6 +1,7 @@
-"""Drop obvious noise nodes from the KG: math symbols, OCR fragments, stubs.
+"""Drop obvious noise nodes from the KG: math symbols, OCR fragments.
 
-Run after resolve.py. Conservative — only removes clearly-junk nodes.
+Conservative: keeps short pure-letter acronyms (ИВ, ВУ, ФУ are real concepts).
+Only removes names containing math unicode, or that are mostly digits/symbols.
 
 Usage:
     python -m papermind.clean_kg
@@ -11,18 +12,23 @@ from pathlib import Path
 import networkx as nx
 from papermind.config import KG_PATH
 
-# Unicode math/italic ranges that signal a formula fragment, not a concept
+# Unicode math / italic-math / operator ranges -> formula fragment, not concept
 _MATH = re.compile(r"[\U0001D400-\U0001D7FF\u2200-\u22FF\u2100-\u214F]")
 
 def is_noise(name: str) -> bool:
     n = name.strip()
-    if len(n) < 3:
+    if not n:
         return True
+    # Any math/formula unicode -> noise
     if _MATH.search(n):
         return True
-    # mostly digits / punctuation
+    # Single character -> noise (too granular to be a concept)
+    if len(n) == 1:
+        return True
+    # Mostly non-letters (digits, punctuation, symbols) -> noise.
+    # NOTE: short pure-letter acronyms (ИВ, ВУ) pass this and are KEPT.
     alpha = sum(c.isalpha() for c in n)
-    if alpha / max(len(n), 1) < 0.5:
+    if alpha / len(n) < 0.5:
         return True
     return False
 
@@ -36,7 +42,7 @@ def main():
     pickle.dump(g, path.open("wb"))
     print(f"Removed {len(junk)} noise nodes ({before} -> {g.number_of_nodes()})")
     print(f"Edges now: {g.number_of_edges()}")
-    print(f"Sample removed: {junk[:12]}")
+    print(f"Sample removed: {junk[:15]}")
     print(f"Backup: {path.with_suffix('.pkl.preclean')}")
 
 if __name__ == "__main__":
