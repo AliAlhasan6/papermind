@@ -33,3 +33,7 @@ papermind.db
 data/kg_progress.jsonl
 data/kg_failures.jsonl
 data/kg_run.log
+
+# Graph backups (regeneratable)
+*.pkl.bak
+*.pkl.preclean
