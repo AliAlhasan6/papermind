@@ -1,19 +1,20 @@
-// PaperMind frontend — Day 6: live chat + sources + KG viewer
-const API = "";  // same origin — served by FastAPI
-
+// PaperMind frontend — Atlas design, real backend wiring.
+const API = "";
 const $ = (id) => document.getElementById(id);
 let pendingFiles = [];
 
 // ---------- Ingestion ----------
 $("pdf-input").addEventListener("change", (e) => {
   pendingFiles = Array.from(e.target.files);
-  $("ingest-btn").disabled = pendingFiles.length === 0;
+  const f = $("file-field-text-holder");
+  if (f) f.textContent = pendingFiles.length
+    ? pendingFiles.length + " file(s) selected" : "Choose PDFs...";
   $("ingest-status").textContent = pendingFiles.length
-    ? pendingFiles.length + " file(s) selected" : "";
+    ? pendingFiles.length + " file(s) ready" : "";
 });
 
 $("ingest-btn").addEventListener("click", async () => {
-  if (!pendingFiles.length) return;
+  if (!pendingFiles.length) { $("ingest-status").textContent = "no files selected"; return; }
   $("ingest-btn").disabled = true;
   $("ingest-status").textContent = "ingesting... (may take a minute)";
   const fd = new FormData();
@@ -22,12 +23,15 @@ $("ingest-btn").addEventListener("click", async () => {
     const r = await fetch(API + "/ingest", { method: "POST", body: fd });
     const data = await r.json();
     $("ingest-status").textContent =
-      "done: " + data.papers + " papers, " + data.chunks + " chunks";
+      data.papers + " papers indexed, " + data.chunks + " chunks";
     refreshLibrary();
+    loadKG();
     pendingFiles = [];
     $("pdf-input").value = "";
   } catch (err) {
     $("ingest-status").textContent = "error: " + err.message;
+  } finally {
+    $("ingest-btn").disabled = false;
   }
 });
 
@@ -35,12 +39,24 @@ async function refreshLibrary() {
   try {
     const r = await fetch(API + "/papers");
     const data = await r.json();
-    $("paper-list").innerHTML = data.papers.length
-      ? data.papers.map((p) =>
-          "<li>" + p.name + "<span class='meta'>" + p.chunks + " ch</span></li>").join("")
-      : "<li><em>empty</em></li>";
+    const list = $("paper-list");
+    if (!data.papers || !data.papers.length) {
+      list.innerHTML = '<div class="empty"><p class="empty-title">No papers loaded</p>'
+        + '<p class="empty-body">Drop PDFs above. PaperMind will not answer '
+        + 'from anything outside this library.</p></div>';
+      return;
+    }
+    list.innerHTML = data.papers.map((p) =>
+      '<div class="paper">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
+      + '<div class="title">' + escapeHtml(p.name) + '</div>'
+      + '<div class="lang">' + p.chunks + ' ch</div></div></div>'
+    ).join("");
+    const count = $("paper-count");
+    if (count) count.textContent = data.papers.length;
   } catch {
-    $("paper-list").innerHTML = "<li><em>API offline</em></li>";
+    $("paper-list").innerHTML =
+      '<div class="empty"><p class="empty-body">API offline.</p></div>';
   }
 }
 
@@ -50,17 +66,19 @@ $("chat-form").addEventListener("submit", async (e) => {
   const q = $("chat-input").value.trim();
   if (!q) return;
 
-  // Clear placeholder, render user message
-  const ph = document.querySelector("#messages .placeholder");
-  if (ph) ph.remove();
+  const welcome = document.querySelector("#messages .welcome");
+  if (welcome) welcome.remove();
+
   addMessage("user", q);
   $("chat-input").value = "";
   $("chat-input").disabled = true;
   $("send-btn").disabled = true;
 
-  // Thinking indicator
-  const thinking = addMessage("thinking",
-    "PaperMind is thinking... local inference, this takes a few minutes");
+  const thinking = document.createElement("div");
+  thinking.className = "thinking";
+  thinking.textContent = "PaperMind is thinking — local inference, a few minutes";
+  $("messages").appendChild(thinking);
+  $("messages").scrollTop = $("messages").scrollHeight;
 
   try {
     const r = await fetch(API + "/chat", {
@@ -85,9 +103,15 @@ $("chat-form").addEventListener("submit", async (e) => {
 
 function addMessage(role, text) {
   const div = document.createElement("div");
-  div.className = "msg " + role;
-  if (role === "thinking") {
-    div.innerHTML = "<span class='pulse'></span>" + text;
+  div.className = "message " + role;
+  if (role === "assistant") {
+    // Split into paragraphs, turn [chunk_id] into citation chips
+    text.split(/\n\n+/).forEach((para) => {
+      const p = document.createElement("p");
+      p.innerHTML = escapeHtml(para).replace(/\[([^\]]+_c\d+)\]/g,
+        '<span class="cite" data-cite="$1">$1</span>');
+      div.appendChild(p);
+    });
   } else {
     div.textContent = text;
   }
@@ -96,76 +120,121 @@ function addMessage(role, text) {
   return div;
 }
 
-// ---------- Sources panel ----------
+// ---------- Sources ----------
 function renderSources(answer) {
-  // Extract [chunk_id] citations from the answer text
-  const ids = [...new Set((answer.match(/\[([^\]]+)\]/g) || [])
-    .map((m) => m.slice(1, -1))
-    .filter((s) => s.includes("_c")))];
+  const ids = [...new Set((answer.match(/\[([^\]]+_c\d+)\]/g) || [])
+    .map((m) => m.slice(1, -1)))];
+  const panel = $("sources-list");
   if (!ids.length) {
-    $("sources-list").innerHTML = "<em>No citations in this answer.</em>";
+    panel.innerHTML =
+      '<div class="empty"><p class="empty-body">No citations in this answer.</p></div>';
     return;
   }
-  $("sources-list").innerHTML = ids.map((id) =>
-    "<div class='cite' data-id='" + id + "'>" + id + "</div>").join("");
-  document.querySelectorAll(".cite").forEach((el) => {
-    el.addEventListener("click", () => toggleCitation(el));
+  panel.innerHTML = ids.map((id) =>
+    '<div class="source" aria-expanded="false" data-id="' + escapeAttr(id) + '">'
+    + '<div class="source-header">'
+    + '<span class="cit">&sect;</span>'
+    + '<span class="paper">' + escapeHtml(id) + '</span></div>'
+    + '<div class="source-body">click to load source text...</div></div>'
+  ).join("");
+  panel.querySelectorAll(".source").forEach((el) => {
+    el.addEventListener("click", () => toggleSource(el));
   });
 }
 
-async function toggleCitation(el) {
-  const existing = el.querySelector(".cite-text");
-  if (existing) { existing.remove(); return; }
-  const id = el.dataset.id;
-  el.insertAdjacentHTML("beforeend",
-    "<div class='cite-text'>loading...</div>");
+async function toggleSource(el) {
+  const open = el.getAttribute("aria-expanded") === "true";
+  el.setAttribute("aria-expanded", open ? "false" : "true");
+  el.classList.toggle("expanded", !open);
+  if (open) return;
+  const body = el.querySelector(".source-body");
+  if (body.dataset.loaded) return;
   try {
-    const r = await fetch(API + "/cite/" + encodeURIComponent(id));
+    const r = await fetch(API + "/cite/" + encodeURIComponent(el.dataset.id));
     const data = await r.json();
-    el.querySelector(".cite-text").textContent =
-      data.text || "(not found)";
+    body.textContent = data.text || "(not found)";
+    body.dataset.loaded = "1";
   } catch {
-    el.querySelector(".cite-text").textContent = "(error)";
+    body.textContent = "(error loading source)";
   }
 }
 
-// ---------- Trace panel ----------
+// ---------- Trace ----------
 function renderTrace(trace) {
+  const panel = $("tools-list");
   if (!trace.length) {
-    $("tools-list").innerHTML = "<em>No tool calls.</em>";
+    panel.innerHTML =
+      '<div class="empty"><p class="empty-body">No tool calls.</p></div>';
     return;
   }
-  $("tools-list").innerHTML = trace.map((t) => {
-    const arg = JSON.stringify(t.args);
-    return "<div class='tool-call'>" + t.tool + "<br><span style='opacity:.6'>"
-      + arg + "</span></div>";
+  panel.innerHTML = trace.map((t) => {
+    const args = escapeHtml(JSON.stringify(t.args));
+    return '<div class="tool" data-tool="' + escapeAttr(t.tool) + '">'
+      + '<span></span>'
+      + '<div><div><span class="tool-name">' + escapeHtml(t.tool) + '</span>'
+      + '<span class="tool-args"> ' + args + '</span></div></div>'
+      + '<span class="tool-time"></span></div>';
   }).join("");
 }
 
-// ---------- KG viewer (static top-degree overview) ----------
+// ---------- KG viewer ----------
 async function loadKG() {
   try {
     const r = await fetch(API + "/graph");
     const data = await r.json();
+    const cap = $("kg-caption");
     if (!data.nodes || !data.nodes.length) {
-      $("kg-caption").textContent = "graph empty";
+      if (cap) cap.innerHTML = '<span class="kg-caption-empty">graph empty</span>';
       return;
     }
-    const nodes = new vis.DataSet(data.nodes);
-    const edges = new vis.DataSet(data.edges);
+    const nodes = new vis.DataSet(data.nodes.map((n) => ({
+      id: n.id, label: n.label, value: n.value,
+    })));
+    const edges = new vis.DataSet(data.edges.map((e) => ({
+      from: e.from, to: e.to,
+    })));
     new vis.Network($("kg-viewer"), { nodes, edges }, {
-      nodes: { shape: "dot", size: 10, font: { size: 11 } },
-      edges: { color: { opacity: 0.4 }, smooth: false },
-      physics: { stabilization: true, barnesHut: { gravitationalConstant: -3000 } },
+      nodes: { shape: "dot", size: 9, font: { size: 11, face: "IBM Plex Mono" } },
+      edges: { color: { opacity: 0.35 }, smooth: false },
+      physics: { stabilization: { iterations: 200 },
+                 barnesHut: { gravitationalConstant: -3000 } },
       interaction: { hover: true },
     });
-    $("kg-caption").textContent =
-      data.nodes.length + " concepts shown (top-degree) of " + data.total + " total";
+    if (cap) cap.textContent =
+      data.nodes.length + " concepts shown of " + data.total + " total";
   } catch {
-    $("kg-caption").textContent = "graph unavailable";
+    const cap = $("kg-caption");
+    if (cap) cap.innerHTML = '<span class="kg-caption-empty">graph unavailable</span>';
   }
 }
+
+// ---------- Helpers ----------
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/'/g, "&#39;"); }
 
 // ---------- Init ----------
 refreshLibrary();
 loadKG();
+
+// ---------- Theme toggle ----------
+(function () {
+  const root = document.documentElement;
+  const saved = localStorage.getItem("papermind-theme");
+  if (saved === "dark" || saved === "light") {
+    root.setAttribute("data-theme", saved);
+  }
+  const btn = document.getElementById("theme-toggle");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const current = root.getAttribute("data-theme")
+        || (prefersDark ? "dark" : "light");
+      const next = current === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      localStorage.setItem("papermind-theme", next);
+    });
+  }
+})();
