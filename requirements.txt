@@ -12,9 +12,13 @@ sentence-transformers>=3.0.0
 pypdf>=4.0.0
 networkx>=3.0
 
-# Data validation + UI + env
+# Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# Data validation + env
 pydantic>=2.0
-gradio>=4.0.0
 python-dotenv>=1.0.0
 
 # Dev

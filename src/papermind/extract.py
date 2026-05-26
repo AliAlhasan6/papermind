@@ -63,6 +63,7 @@ def _llm() -> ChatOllama:
 def extract_chunk(chunk_text: str, chunk_id: str, failures_log: Path | None = None) -> ChunkKG:
     """Extract entities + relations from a single chunk. Returns empty KG on failure."""
     prompt = EXTRACT_PROMPT.format(chunk=chunk_text[:1500])  # cap input too
+    raw = None
     try:
         raw = _llm().invoke(prompt).content
         cleaned = _strip_fences(str(raw))
@@ -81,6 +82,6 @@ def extract_chunk(chunk_text: str, chunk_id: str, failures_log: Path | None = No
                 f.write(json.dumps({
                     "chunk_id": chunk_id,
                     "error": str(e)[:200],
-                    "raw": str(raw)[:500] if "raw" in dir() else None,
+                    "raw": str(raw)[:500] if raw is not None else None,
                 }) + "\n")
         return ChunkKG()

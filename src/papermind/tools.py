@@ -35,9 +35,13 @@ def _collection():
         path=CHROMA_PATH,
         settings=Settings(anonymized_telemetry=False),
     )
-    return client.get_collection(COLLECTION_NAME)
+    return client.get_or_create_collection(
+        name=COLLECTION_NAME,
+        metadata={"hnsw:space": "cosine"},
+    )
 
 
+# Cached for the server's lifetime by design; restart the server to pick up a rebuilt KG.
 @lru_cache(maxsize=1)
 def _graph() -> nx.DiGraph:
     path = Path(KG_PATH)

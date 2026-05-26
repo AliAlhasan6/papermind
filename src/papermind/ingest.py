@@ -10,7 +10,8 @@ Usage:
 from __future__ import annotations
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = ""  # CPU only for embeddings (Pascal GPU not supported by torch 2.12)
+# Intentional: the installed PyTorch build does not support this machine's GPU, so embeddings must run on CPU.
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
 import sys
