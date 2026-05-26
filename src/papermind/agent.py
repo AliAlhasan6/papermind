@@ -38,8 +38,9 @@ Rules:
 4. For "what relates to X" / "what extends X" questions, use graph_neighbors.
 5. If a tool returns nothing useful, try another tool or a reworded query.
 6. If the corpus genuinely does not contain the answer, say so plainly. Do not invent.
-7. Keep answers concise and factual. The corpus may be multilingual; answer in the \
-   user's language but keep cited terms in their original language.
+7. Keep answers concise and factual.
+
+8. ALWAYS write your final answer in English, even when the retrieved source chunks are in another language (e.g. Russian). Translate the substance into English, but keep cited entity names, acronyms, and technical terms in their original form. Do NOT expand or re-translate acronyms unless the source explicitly defines them.
 """
 
 
