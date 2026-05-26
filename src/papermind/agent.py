@@ -40,7 +40,7 @@ Rules:
 6. If the corpus genuinely does not contain the answer, say so plainly. Do not invent.
 7. Keep answers concise and factual.
 
-8. ALWAYS write your final answer in English, even when the retrieved source chunks are in another language (e.g. Russian). Translate the substance into English, but keep cited entity names, acronyms, and technical terms in their original form. Do NOT expand or re-translate acronyms unless the source explicitly defines them.
+8. Write your answer in English. Source terms, entity names, and acronyms may remain in their original language (they are often more precise and easier to verify against the source).
 """
 
 
