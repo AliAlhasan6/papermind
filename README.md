@@ -35,25 +35,88 @@ A LangGraph ReAct agent reads each question, picks the appropriate tool (or both
 
 PaperMind has two phases: an **offline ingestion pipeline** that runs once per corpus, and an **online query pipeline** that runs per question. They share the vector store and the knowledge graph.
 
+
+
 ### Ingestion (run once per corpus)
 Each PDF is parsed and split into overlapping chunks. The chunks fork down two paths: one is embedded into a Chroma vector store; the other is processed by a local LLM that extracts entities and relations into a NetworkX knowledge graph. The graph is then resolved (duplicate nodes merged) and cleaned (formula and OCR-noise nodes dropped). The extraction job is resumable — it checkpoints progress and can be interrupted and restarted without losing work.
+
+```mermaid
+flowchart TB
+    %% ──────────── INGESTION ────────────
+    subgraph INGEST["Ingestion (offline, once per corpus)"]
+        direction TB
+        PDF["PDFs<br/><i>binary</i>"]
+        TXT["text<br/><i>utf-8 str</i>"]
+        CHK["chunks<br/><i>~800 chars, 100 overlap</i>"]
+        EMB["MiniLM embedder<br/><i>multilingual, CPU</i>"]
+        LLM_EXT["Qwen 2.5 7B<br/><i>entity + relation prompt</i>"]
+        VEC["vectors<br/><i>float32[384]</i>"]
+        TRIPLES["JSON triples<br/><i>(head, relation, tail)</i>"]
+
+        PDF -->|pypdf| TXT
+        TXT -->|split| CHK
+        CHK --> EMB
+        CHK --> LLM_EXT
+        EMB --> VEC
+        LLM_EXT --> TRIPLES
+    end
+
+    %% ──────────── STORAGE ────────────
+    subgraph STORE["Storage (shared)"]
+        direction LR
+        CHROMA[("Chroma<br/><i>persistent vector store</i>")]
+        KG[("NetworkX<br/><i>kg.pkl</i>")]
+    end
+
+    VEC --> CHROMA
+    TRIPLES -->|resolve + clean| KG
+
+    %% ──────────── QUERY ────────────
+    subgraph QUERY["Query (online, per question)"]
+        direction TB
+        Q["question<br/><i>utf-8 str</i>"]
+        AGENT{"LangGraph agent<br/><i>ReAct loop</i>"}
+        VS["vector_search<br/><i>top-k chunks</i>"]
+        GN["graph_neighbors<br/><i>entity + relations</i>"]
+        CS["cite_source<br/><i>verbatim chunk</i>"]
+        ANS["answer<br/><i>str + [chunk_ids]</i>"]
+
+        Q --> AGENT
+        AGENT -->|semantic Q| VS
+        AGENT -->|relational Q| GN
+        AGENT -->|verify| CS
+        VS -->|loop| AGENT
+        GN -->|loop| AGENT
+        CS -->|loop| AGENT
+        AGENT --> ANS
+    end
+
+    CHROMA -.->|reads| VS
+    CHROMA -.->|reads| CS
+    KG -.->|reads| GN
+
+    %% ──────────── UI ────────────
+    UI["Browser UI<br/><i>FastAPI + vanilla HTML/CSS/JS</i>"]
+    ANS --> UI
+    UI -->|POST /chat| Q
+
+    %% ──────────── ATLAS THEME ────────────
+    classDef ingest fill:#f4f6ee,stroke:#134a48,stroke-width:1px,color:#141815
+    classDef store fill:#e3dca4,stroke:#8a6815,stroke-width:1.5px,color:#141815
+    classDef query fill:#c4d8d5,stroke:#134a48,stroke-width:1px,color:#0a312f
+    classDef agent fill:#134a48,stroke:#134a48,stroke-width:1.5px,color:#f4f6ee
+    classDef ui fill:#ebeee3,stroke:#7a8079,stroke-width:1px,color:#141815
+
+    class PDF,TXT,CHK,EMB,LLM_EXT,VEC,TRIPLES ingest
+    class CHROMA,KG store
+    class Q,VS,GN,CS,ANS query
+    class AGENT agent
+    class UI ui
+```
 
 ### Query (run per question)
 The agent receives the question, selects and calls tools, optionally loops to retrieve more, and returns an answer grounded in chunk IDs. A FastAPI backend exposes this over HTTP; a vanilla HTML/CSS/JS frontend renders the chat, the citations, the agent trace, and a clickable force-directed view of the knowledge graph.
 
-## Stack
-
-| Layer | Choice |
-|---|---|
-| LLM | Qwen 2.5 7B (Q4), local via Ollama |
-| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2`, CPU |
-| Vector store | Chroma (persistent, local) |
-| Knowledge graph | NetworkX |
-| Agent | LangGraph (ReAct) |
-| Backend | FastAPI |
-| Frontend | Vanilla HTML / CSS / JavaScript |
-
-Everything is free and open-source. No API keys are required.
 
 ## Quickstart
 
