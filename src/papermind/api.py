@@ -88,6 +88,50 @@ def health():
     return {"status": "ok"}
 
 
+# ---------- Delete a paper (library manager) ----------
+@app.delete("/papers/{paper_id}")
+def delete_paper(paper_id: str):
+    """Remove a paper: its chunks from Chroma, its nodes from the KG."""
+    import pickle
+    from papermind.config import CHROMA_PATH, COLLECTION_NAME, KG_PATH
+
+    removed_chunks = 0
+    removed_nodes = 0
+    try:
+        client = chromadb.PersistentClient(
+            path=CHROMA_PATH,
+            settings=Settings(anonymized_telemetry=False),
+        )
+        col = client.get_collection(COLLECTION_NAME)
+        hits = col.get(where={"paper_id": paper_id})
+        ids = hits.get("ids", []) or []
+        if ids:
+            col.delete(ids=ids)
+            removed_chunks = len(ids)
+    except Exception as e:
+        return {"error": f"chroma delete failed: {e}", "paper_id": paper_id}
+
+    kg_path = Path(KG_PATH)
+    if kg_path.exists():
+        try:
+            with kg_path.open("rb") as f:
+                g = pickle.load(f)
+            prefix = paper_id + "_c"
+            to_remove = [n for n, d in g.nodes(data=True)
+                         if d.get("src_chunks")
+                         and all(s.startswith(prefix) for s in d["src_chunks"])]
+            g.remove_nodes_from(to_remove)
+            removed_nodes = len(to_remove)
+            with kg_path.open("wb") as f:
+                pickle.dump(g, f)
+        except Exception as e:
+            return {"error": f"kg prune failed: {e}", "paper_id": paper_id,
+                    "removed_chunks": removed_chunks}
+
+    return {"paper_id": paper_id, "removed_chunks": removed_chunks,
+            "removed_nodes": removed_nodes}
+
+
 # ---------- Cite + Graph endpoints (Day 6) ----------
 @app.get("/cite/{chunk_id}")
 def cite(chunk_id: str):

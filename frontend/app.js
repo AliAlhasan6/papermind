@@ -47,11 +47,18 @@ async function refreshLibrary() {
       return;
     }
     list.innerHTML = data.papers.map((p) =>
-      '<div class="paper">'
+      '<div class="paper" data-id="' + escapeAttr(p.name) + '">'
       + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
       + '<div class="title">' + escapeHtml(p.name) + '</div>'
-      + '<div class="lang">' + p.chunks + ' ch</div></div></div>'
+      + '<div style="display:flex;gap:8px;align-items:baseline">'
+      + '<span class="lang">' + p.chunks + ' ch</span>'
+      + '<button class="paper-del" data-id="' + escapeAttr(p.name)
+      + '" title="Remove this paper" aria-label="Remove">&times;</button>'
+      + '</div></div></div>'
     ).join("");
+    list.querySelectorAll(".paper-del").forEach((b) => {
+      b.addEventListener("click", (e) => { e.stopPropagation(); deletePaper(b.dataset.id); });
+    });
     const count = $("paper-count");
     if (count) count.textContent = data.papers.length;
   } catch {
@@ -205,6 +212,22 @@ async function loadKG() {
   } catch {
     const cap = $("kg-caption");
     if (cap) cap.innerHTML = '<span class="kg-caption-empty">graph unavailable</span>';
+  }
+}
+
+// ---------- Delete a paper ----------
+async function deletePaper(paperId) {
+  if (!confirm('Remove "' + paperId + '" from the library?\n'
+      + "This deletes its chunks and graph nodes.")) return;
+  try {
+    const r = await fetch(API + "/papers/" + encodeURIComponent(paperId),
+                          { method: "DELETE" });
+    const data = await r.json();
+    if (data.error) { alert("Delete failed: " + data.error); return; }
+    refreshLibrary();
+    loadKG();
+  } catch (err) {
+    alert("Delete failed: " + err.message);
   }
 }
 
