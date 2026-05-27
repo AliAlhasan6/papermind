@@ -200,13 +200,43 @@ async function loadKG() {
     const edges = new vis.DataSet(data.edges.map((e) => ({
       from: e.from, to: e.to,
     })));
-    new vis.Network($("kg-viewer"), { nodes, edges }, {
+    const kgNet = new vis.Network($("kg-viewer"), { nodes, edges }, {
       nodes: { shape: "dot", size: 9, font: { size: 11, face: "IBM Plex Mono" } },
       edges: { color: { opacity: 0.35 }, smooth: false },
       physics: { stabilization: { iterations: 200 },
                  barnesHut: { gravitationalConstant: -3000 } },
       interaction: { hover: true },
     });
+    kgNet.on("click", async (params) => {
+      if (!params.nodes.length) return;
+      const nodeName = params.nodes[0];
+      const box = $("kg-caption");
+      box.innerHTML = "<span class='kg-caption-empty'>loading...</span>";
+      try {
+        const r = await fetch(API + "/node/" + encodeURIComponent(nodeName));
+        const d = await r.json();
+        if (!d.found) {
+          box.innerHTML = "<span class='kg-caption-empty'>node not found</span>";
+          return;
+        }
+        const nbrs = d.neighbors.length
+          ? d.neighbors.map((n) =>
+              "<div class='node-nbr'>" + escapeHtml(n.relation)
+              + " &rarr; " + escapeHtml(n.name) + "</div>").join("")
+          : "<div class='kg-caption-empty'>no connected concepts</div>";
+        box.innerHTML =
+          "<div class='node-info'>"
+          + "<div class='node-title'>" + escapeHtml(d.name) + "</div>"
+          + "<div class='node-meta'>type: " + escapeHtml(d.type)
+          + " &middot; degree: " + d.degree + "</div>"
+          + "<div class='node-nbrs'>" + nbrs + "</div>"
+          + "</div>";
+      } catch (err) {
+        box.innerHTML = "<span class='kg-caption-empty'>error: "
+          + escapeHtml(err.message) + "</span>";
+      }
+    });
+
     if (cap) cap.textContent =
       data.nodes.length + " concepts shown of " + data.total + " total";
   } catch {

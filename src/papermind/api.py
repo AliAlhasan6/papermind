@@ -156,6 +156,42 @@ def graph(top: int = 40):
     return {"nodes": nodes, "edges": edges, "total": g.number_of_nodes()}
 
 
+# ---------- Node inspector (KG viewer click) ----------
+@app.get("/node/{name}")
+def node_info(name: str):
+    """Return one KG node's details + neighbors — for the graph viewer.
+
+    Uses the same graph graph_neighbors uses, so the UI reflects exactly
+    what the agent traverses.
+    """
+    import pickle
+    from papermind.config import KG_PATH
+
+    kg_path = Path(KG_PATH)
+    if not kg_path.exists():
+        return {"found": False, "name": name}
+    with kg_path.open("rb") as f:
+        g = pickle.load(f)
+
+    if name not in g:
+        return {"found": False, "name": name}
+
+    data = g.nodes[name]
+    neighbors = []
+    for nb in g.to_undirected().neighbors(name):
+        edge = g.get_edge_data(name, nb) or g.get_edge_data(nb, name) or {}
+        neighbors.append({"name": nb, "relation": edge.get("type", "related")})
+
+    return {
+        "found": True,
+        "name": name,
+        "type": data.get("type", "other"),
+        "chunks": data.get("src_chunks", [])[:5],
+        "degree": g.degree(name),
+        "neighbors": neighbors[:20],
+    }
+
+
 # ---------- Serve the frontend ----------
 
 frontend_dir = Path(__file__).parent.parent.parent / "frontend"
